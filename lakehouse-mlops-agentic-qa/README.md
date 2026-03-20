@@ -57,8 +57,9 @@ flowchart LR
     classDef eval fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:1.5px;
     classDef release fill:#e11d48,stroke:#fda4af,color:#ffffff,stroke-width:1.8px;
 
+```
+
   
-## Folder structure
 
 ```text
 lakehouse-mlops-agentic-qa/

@@ -18,21 +18,22 @@ The RAG system is intentionally simple. The engineering around it — the pipeli
 ## Architecture
 
 ```mermaid
+
 flowchart LR
-    A[Raw Documents] --> B[Bronze Layer]
-    B --> C[Silver Layer]
-    C --> D[Gold Layer]
+    A[Raw Documents] --> B[Bronze]
+    B --> C[Silver]
+    C --> D[Gold]
 
     B --> QB[Bronze Gate]
     C --> QS[Silver Gate]
     D --> QG[Gold Gate]
 
-    D --> E[Build Vector Index]
-    E --> F[Retrieve Relevant Chunks]
-    F --> G[Generate Answer]
+    D --> E[Build Index]
+    E --> F[Retrieve]
+    F --> G[Generate]
 
-    G --> H[Regression Testing]
-    D --> I[Evidently Drift Report]
+    G --> H[Regression]
+    D --> I[Drift Report]
 
     QB --> J[Promotion Engine]
     QS --> J
@@ -40,9 +41,23 @@ flowchart LR
     H --> J
     I --> J
 
-    J --> K[Reject / Canary / Production]
-```
+    J --> K[Release Decision]
 
+    class A input;
+    class B,C,D pipeline;
+    class QB,QS,QG gates;
+    class E,F,G rag;
+    class H,I eval;
+    class J,K release;
+
+    classDef input fill:#475569,stroke:#cbd5e1,color:#ffffff,stroke-width:1.5px;
+    classDef pipeline fill:#2563eb,stroke:#93c5fd,color:#ffffff,stroke-width:1.5px;
+    classDef gates fill:#d97706,stroke:#fcd34d,color:#ffffff,stroke-width:1.5px;
+    classDef rag fill:#16a34a,stroke:#86efac,color:#ffffff,stroke-width:1.5px;
+    classDef eval fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:1.5px;
+    classDef release fill:#e11d48,stroke:#fda4af,color:#ffffff,stroke-width:1.8px;
+
+  
 ## Folder structure
 
 ```text

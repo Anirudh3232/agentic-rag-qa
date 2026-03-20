@@ -1,0 +1,2 @@
+{"question": "What are quality gates in MLOps?", "expected_keywords": ["quality gates", "automated checks", "threshold"]}
+{"question": "How does Kubernetes autoscaling work?", "expected_keywords": ["kubernetes", "horizontal pod autoscaler", "replicas"]}

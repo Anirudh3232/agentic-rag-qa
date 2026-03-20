@@ -1,0 +1,22 @@
+# Paths are relative to the project root (where you run `lmq` from).
+raw_dir: data/raw
+lake_root: data/lake
+artifacts_dir: artifacts
+
+# Gold layer: simple character-based chunking (no embeddings in M1–M2).
+gold_chunk_max_chars: 500
+
+rag:
+  index_dir: artifacts/chroma
+  top_k: 3
+
+promotion:
+  prod_min_pass_rate: 1.0
+  canary_min_pass_rate: 0.75
+  max_drifted_columns: 0
+
+gates:
+  bronze_min_rows: 1
+  silver_min_rows: 1
+  gold_min_rows: 1
+  min_text_length: 1

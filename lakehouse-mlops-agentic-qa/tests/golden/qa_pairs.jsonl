@@ -1,0 +1,8 @@
+{"question": "What are quality gates in MLOps?", "expected_keywords": ["quality gates", "automated checks", "threshold"]}
+{"question": "What is the medallion architecture?", "expected_keywords": ["bronze", "silver", "gold"]}
+{"question": "How does RAG reduce hallucinations?", "expected_keywords": ["retrieval", "retriever", "source"]}
+{"question": "What are the key stages of an MLOps release workflow?", "expected_keywords": ["data ingestion", "model training", "canary"]}
+{"question": "What does Evidently do?", "expected_keywords": ["evidently", "data drift", "monitoring"]}
+{"question": "How does RAG work step by step?", "expected_keywords": ["question", "vector index", "language model"]}
+{"question": "What is data drift detection?", "expected_keywords": ["drift", "distribution", "reference"]}
+{"question": "What are the limitations of RAG?", "expected_keywords": ["retrieval", "chunk", "embedding"]}

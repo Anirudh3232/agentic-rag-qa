@@ -1,6 +1,13 @@
 # lakehouse-mlops-agentic-qa
 
-A local-first simulation of an enterprise MLOps release workflow for a RAG-based QA system. The project demonstrates end-to-end data engineering and ML deployment practices — from raw document ingestion through a medallion data pipeline, quality gates, retrieval-augmented generation, regression testing, drift monitoring, and automated promotion decisions — all running on a single machine with no cloud dependencies.
+This project is basically a way to simulate how an enterprise MLOps workflow might work, but all local on one machine. Its for a QA system that uses RAG, you know, retrieval augmented generation. I think it shows the whole process from start to finish in data engineering and deploying ML stuff.
+
+It starts with taking in raw documents. Then goes through this medallion data pipeline, which I organizes the data in layers. There are quality gates along the way to check things.
+
+After that, it handles the RAG part for generating answers based on retrieval. And it includes regression testing to make sure updates dont break anything. Drift monitoring is there too, to spot when the data or model shifts over time.
+
+Finally, automated decisions for promoting releases. All of this runs without any cloud, just on your local setup. since enterprise stuff usually needs big infrastructure. This is  kind of simplified,and that's the point for simulation.
+
 
 ## Why this project matters
 

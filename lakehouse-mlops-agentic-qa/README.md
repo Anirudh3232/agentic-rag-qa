@@ -17,15 +17,6 @@ The RAG system is intentionally simple. The engineering around it — the pipeli
 
 ## Architecture
 
-At a high level, the system follows a simple release workflow:
-
-1. **Ingest documents** into a local medallion pipeline  
-2. **Apply quality gates** at bronze, silver, and gold layers  
-3. **Build a local RAG index** from gold chunks  
-4. **Run QA regression tests** against a golden set  
-5. **Generate drift and quality reports** with Evidently  
-6. **Make a promotion decision**: reject, canary, or production  
-
 ```mermaid
 flowchart LR
     A[Raw Documents] --> B[Bronze Layer]

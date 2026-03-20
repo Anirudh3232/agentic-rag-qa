@@ -17,50 +17,39 @@ The RAG system is intentionally simple. The engineering around it — the pipeli
 
 ## Architecture
 
+At a high level, the system follows a simple release workflow:
+
+1. **Ingest documents** into a local medallion pipeline  
+2. **Apply quality gates** at bronze, silver, and gold layers  
+3. **Build a local RAG index** from gold chunks  
+4. **Run QA regression tests** against a golden set  
+5. **Generate drift and quality reports** with Evidently  
+6. **Make a promotion decision**: reject, canary, or production  
+
 ```mermaid
 flowchart LR
-  subgraph ingest [Ingest]
-    Raw[raw docs]
-  end
+    A[Raw Documents] --> B[Bronze Layer]
+    B --> C[Silver Layer]
+    C --> D[Gold Layer]
 
-  subgraph lake [Medallion Pipeline]
-    B[Bronze]
-    S[Silver]
-    G[Gold]
-  end
+    B --> QB[Bronze Gate]
+    C --> QS[Silver Gate]
+    D --> QG[Gold Gate]
 
-  subgraph gates [Quality Gates]
-    GB[bronze gate]
-    GS[silver gate]
-    GG[gold gate]
-  end
+    D --> E[Build Vector Index]
+    E --> F[Retrieve Relevant Chunks]
+    F --> G[Generate Answer]
 
-  subgraph rag [RAG]
-    Idx[ChromaDB Index]
-    Ret[Retrieve]
-    Gen[Generate]
-  end
+    G --> H[Regression Testing]
+    D --> I[Evidently Drift Report]
 
-  subgraph eval [Evaluation]
-    Reg[Regression Runner]
-    Ev[Evidently Report]
-  end
+    QB --> J[Promotion Engine]
+    QS --> J
+    QG --> J
+    H --> J
+    I --> J
 
-  subgraph release [Release]
-    Prom[Promotion Engine]
-  end
-
-  Raw --> B --> GB --> S --> GS --> G --> GG
-  G --> Idx --> Ret --> Gen
-  Gen --> Reg
-  G --> Ev
-  Reg --> Prom
-  Ev --> Prom
-  GB --> Prom
-  GS --> Prom
-  GG --> Prom
-  Prom -->|reject / canary / production| Decision[Decision JSON]
-```
+    J --> K[Reject / Canary / Production]
 
 ## Folder structure
 

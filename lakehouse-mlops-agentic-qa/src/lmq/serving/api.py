@@ -14,6 +14,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     cfg_path = config_path or Path("configs/pipeline.yaml")
     cfg = PipelineConfig.load(cfg_path)
 
+    from lmq.cloud.keyvault import load_secrets
+
+    load_secrets(cfg.cloud.keyvault_url if cfg.cloud else None)
+
     application = FastAPI(title="lmq", version=__version__)
 
     @application.get("/health", response_model=HealthResponse)

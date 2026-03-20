@@ -1,6 +1,8 @@
 # lakehouse-mlops-agentic-qa
 
-A local-first simulation of an enterprise MLOps release workflow for a RAG-based QA system. The project demonstrates end-to-end data engineering and ML deployment practices — from raw document ingestion through a medallion data pipeline, quality gates, retrieval-augmented generation, regression testing, drift monitoring, and automated promotion decisions — all running on a single machine with no cloud dependencies.
+An end-to-end MLOps platform for a RAG-based QA system, built on a medallion lakehouse architecture. The project demonstrates production data engineering and ML deployment practices — from raw document ingestion through quality gates, retrieval-augmented generation, regression testing, drift monitoring, and automated promotion decisions.
+
+Runs locally with zero cloud dependencies for fast iteration, and deploys to Azure as a lakehouse MLOps platform (ADLS Gen2, Databricks, Azure ML, Container Apps) via Bicep IaC and GitHub Actions CI/CD.
 
 ## Why this project matters
 
@@ -59,12 +61,64 @@ flowchart LR
 
 ```
 
-  
+## Azure architecture
+
+The local-first design maps directly to Azure services for production deployment:
+
+```mermaid
+flowchart TB
+  subgraph gh [GitHub]
+    Repo[Repository] --> Actions[GitHub Actions<br/>lint · test · build · deploy]
+  end
+
+  subgraph azure [Azure Resource Group]
+    subgraph data [Data Layer]
+      ADLS[ADLS Gen2<br/>raw / lake / artifacts]
+    end
+
+    subgraph compute [Compute]
+      Databricks[Azure Databricks<br/>Pipeline Jobs]
+      ContainerApp[Container Apps<br/>FastAPI Serving]
+    end
+
+    subgraph mlops [MLOps]
+      AzureML[Azure ML Workspace<br/>MLflow Tracking]
+    end
+
+    subgraph security [Security]
+      KeyVault[Azure Key Vault]
+      ACR[Container Registry]
+    end
+  end
+
+  Actions -->|push image| ACR
+  Actions -->|deploy revision| ContainerApp
+  ACR --> ContainerApp
+  Databricks -->|read/write| ADLS
+  ContainerApp -->|fetch secrets| KeyVault
+  Databricks -->|log metrics| AzureML
+```
+
+| Local component | Azure service | Notes |
+|----------------|---------------|-------|
+| `data/raw/`, `data/lake/` | ADLS Gen2 | Medallion layout preserved as containers |
+| `artifacts/` | ADLS Gen2 + Azure ML | Artifacts in storage, metrics in MLflow |
+| Pipeline CLI (`lmq pipeline run`) | Azure Databricks job | Same Python package, Databricks compute |
+| FastAPI server | Azure Container Apps | Containerized, scale-to-zero |
+| `OPENAI_API_KEY` env var | Azure Key Vault | Secrets fetched at startup, env var fallback |
+| JSON artifacts | Azure ML (MLflow) | Pipeline runs, regression, promotion tracked |
+| — | GitHub Actions | Lint → test → build → push → deploy |
+| — | Bicep IaC (`infra/`) | All Azure resources declared as code |
+
+## Folder structure
 
 ```text
 lakehouse-mlops-agentic-qa/
+├── .github/workflows/
+│   └── ci.yml                    # GitHub Actions: lint, test, build, deploy
 ├── configs/
-│   └── pipeline.yaml             # all paths, thresholds, and promotion rules
+│   ├── pipeline.yaml             # local paths, thresholds, and promotion rules
+│   └── pipeline.azure.yaml       # Azure paths (Databricks / ADLS Gen2)
 ├── data/
 │   ├── raw/                      # source documents (.md, .txt)
 │   ├── raw_fail/                 # intentionally bad input for gate demos
@@ -72,7 +126,16 @@ lakehouse-mlops-agentic-qa/
 │       ├── bronze/
 │       ├── silver/
 │       └── gold/
+├── infra/
+│   ├── main.bicep                # Azure resources (ADLS, Key Vault, ACR, etc.)
+│   └── parameters.json           # deployment parameters
+├── notebooks/
+│   └── databricks_pipeline.py    # Databricks job wrapper
 ├── src/lmq/
+│   ├── cloud/                    # Azure integrations (all optional)
+│   │   ├── storage.py            # ADLS Gen2 storage_options helper
+│   │   ├── keyvault.py           # Key Vault secret loader
+│   │   └── mlflow_log.py         # MLflow experiment tracking
 │   ├── pipeline/                 # bronze, silver, gold, DuckDB smoke, manifest
 │   ├── quality/                  # per-layer gate checks and models
 │   ├── rag/                      # chunking, ChromaDB index, retrieve, generate
@@ -97,6 +160,7 @@ lakehouse-mlops-agentic-qa/
 │   ├── regression/               # *_regression.json
 │   ├── evidently/                # HTML report + JSON summary
 │   └── promotion/                # *_promotion.json
+├── Dockerfile                    # multi-stage build for Container Apps
 ├── pyproject.toml
 └── README.md
 ```
@@ -282,20 +346,64 @@ pytest tests -v
 
 21 tests covering quality gates, scoring metrics, regression runner, FastAPI endpoints, Evidently report generation, and all promotion engine decision paths.
 
+## Deploy to Azure
+
+**Prerequisites:** Azure CLI, a subscription, a GitHub repository.
+
+### 1. Provision infrastructure
+
+```bash
+az group create --name lmq-rg --location eastus
+
+az deployment group create \
+  --resource-group lmq-rg \
+  --template-file infra/main.bicep \
+  --parameters infra/parameters.json
+```
+
+### 2. Configure GitHub secrets and variables
+
+| Secret / Variable | Value |
+|-------------------|-------|
+| `AZURE_CREDENTIALS` (secret) | Service principal JSON (`az ad sp create-for-rbac --sdk-auth`) |
+| `ACR_USERNAME` / `ACR_PASSWORD` (secrets) | From ACR admin credentials |
+| `ACR_LOGIN_SERVER` (variable) | e.g. `lmqacr<suffix>.azurecr.io` |
+| `AZURE_RESOURCE_GROUP` (variable) | e.g. `lmq-rg` |
+
+### 3. Push to main
+
+GitHub Actions runs the full pipeline: lint → test → Docker build → push to ACR → deploy new Container Apps revision.
+
+### 4. Run the pipeline in Databricks
+
+Upload `notebooks/databricks_pipeline.py` to your workspace, install the `lmq` wheel as a cluster library, and configure ADLS access via Unity Catalog or mount points. Results are logged to Azure ML (MLflow) automatically.
+
+### Docker (local)
+
+```bash
+docker build -t lmq .
+docker run -p 8000:8000 lmq
+# API at http://localhost:8000/docs
+
+# Run the pipeline inside the container
+docker run lmq pipeline run
+```
+
 ## Limitations
 
-- **Not a production deployment.** There is no Kubernetes, no real canary traffic splitting, no cloud IAM. The promotion engine writes a JSON file — it does not actually deploy anything.
 - **Stub LLM mode.** Without an API key, the QA system returns raw retrieved chunks instead of generated answers. This is intentional: it keeps the regression tests deterministic and the project runnable offline.
 - **Small corpus.** The seed documents are three Markdown files. The architecture works the same way with thousands of documents, but the demo is designed to run in seconds.
 - **Character-based chunking.** The gold layer uses simple fixed-size character splits. A production system would use semantic or sentence-boundary chunking.
 - **No embedding drift.** Evidently reports use tabular features (chunk length, token count) rather than embedding vectors. This avoids heavyweight PCA but means the drift detection does not catch semantic shifts.
+- **ChromaDB stays local.** The vector index runs inside the container. A production deployment would replace it with Azure AI Search or a managed vector database.
+- **No real canary traffic splitting.** The promotion engine writes a JSON decision — it does not actually route traffic. Container Apps revision-based traffic splitting would be the natural next step.
 
 ## Future improvements
 
 - Sentence-boundary or semantic chunking in the gold layer
 - LLM-as-judge evaluation alongside keyword recall
 - Embedding drift via PCA-reduced vectors in Evidently
-- CI/CD integration (GitHub Actions running the full pipeline + promotion)
+- Azure AI Search replacing ChromaDB for managed vector indexing
 - Human-in-the-loop approval UI for canary decisions
 - Versioned gold snapshots for reproducible baseline comparisons
 - Multi-model comparison in the regression runner

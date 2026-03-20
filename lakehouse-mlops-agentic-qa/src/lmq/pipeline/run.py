@@ -118,6 +118,26 @@ def run_pipeline(cfg: PipelineConfig, config_path: Path, raw_dir_override: Path 
             json.dumps(manifest.to_json_dict(), indent=2),
             encoding="utf-8",
         )
+
+        try:
+            from lmq.cloud.mlflow_log import log_pipeline_run
+
+            log_pipeline_run(
+                run_id=run_id,
+                status="success",
+                gate_results=manifest.gate_results,
+                layer_counts={
+                    "bronze": bo.row_count,
+                    "silver": so.row_count,
+                    "gold": go.row_count,
+                },
+                tracking_uri=(
+                    cfg.cloud.mlflow_tracking_uri if cfg.cloud else None
+                ),
+            )
+        except Exception:
+            pass
+
         return manifest_path
     except PipelineGateError:
         raise

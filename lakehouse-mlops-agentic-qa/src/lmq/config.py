@@ -24,6 +24,14 @@ class PromotionRules(BaseModel):
     max_drifted_columns: int = Field(default=0, ge=0)
 
 
+class CloudConfig(BaseModel):
+    """Optional Azure cloud settings. Ignored when absent."""
+
+    storage_account: str | None = None
+    keyvault_url: str | None = None
+    mlflow_tracking_uri: str | None = None
+
+
 class PipelineConfig(BaseModel):
     raw_dir: Path
     lake_root: Path
@@ -32,6 +40,7 @@ class PipelineConfig(BaseModel):
     rag: RAGConfig = RAGConfig()
     promotion: PromotionRules = PromotionRules()
     gates: GateThresholds
+    cloud: CloudConfig | None = None
 
     @classmethod
     def load(cls, path: Path) -> PipelineConfig:

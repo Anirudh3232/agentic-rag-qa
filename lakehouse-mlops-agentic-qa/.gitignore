@@ -1,11 +1,37 @@
-.venv/
+# Python
 __pycache__/
 *.py[cod]
-.pytest_cache/
+*.pyo
+*.pyd
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+
+# Tool caches
 .mypy_cache/
+.pytest_cache/
 .ruff_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Environment
+.env
+
+# Generated pipeline outputs
 artifacts/
 data/lake/
-*.egg-info/
-dist/
-build/
+
+# Optional local model/vector cache if it ever appears outside artifacts
+.chroma/
+chromadb/
+
+# Azure / IaC
+infra/*.parameters.local.json
+.terraform/
+*.tfstate
+*.tfstate.backup

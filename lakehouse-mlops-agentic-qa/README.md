@@ -41,6 +41,7 @@ flowchart LR
     I --> J
 
     J --> K[Reject / Canary / Production]
+```
 
 ## Folder structure
 

@@ -1,5 +1,5 @@
-"""Azure cloud integrations: ADLS Gen2, Key Vault, MLflow.
+"""AWS cloud integrations: S3, Secrets Manager, MLflow.
 
-All modules are optional — they silently no-op when the corresponding
-Azure SDK packages are not installed or environment variables are unset.
+All modules are optional — they silently no-op when boto3 or MLflow
+are not installed or the corresponding environment variables are unset.
 """

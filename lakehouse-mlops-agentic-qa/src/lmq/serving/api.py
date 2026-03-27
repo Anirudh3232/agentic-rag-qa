@@ -14,9 +14,12 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     cfg_path = config_path or Path("configs/pipeline.yaml")
     cfg = PipelineConfig.load(cfg_path)
 
-    from lmq.cloud.keyvault import load_secrets
+    from lmq.cloud.secrets_manager import load_secrets
 
-    load_secrets(cfg.cloud.keyvault_url if cfg.cloud else None)
+    load_secrets(
+        secret_name=cfg.cloud.secret_name if cfg.cloud else None,
+        region=cfg.cloud.aws_region if cfg.cloud else None,
+    )
 
     application = FastAPI(title="lmq", version=__version__)
 

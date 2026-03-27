@@ -1,9 +1,10 @@
-"""Optional MLflow experiment tracking for Azure ML integration.
+"""Optional MLflow experiment tracking.
 
 Every public function is best-effort: it silently returns when MLflow is
 not installed or ``MLFLOW_TRACKING_URI`` is not set.  This lets the same
-pipeline code run locally (no tracking) and in Azure (full tracking)
-without conditional imports at the call site.
+pipeline code run locally (no tracking) and in the cloud (full tracking
+via SageMaker MLflow or any compatible server) without conditional
+imports at the call site.
 """
 
 from __future__ import annotations

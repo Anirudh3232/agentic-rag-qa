@@ -25,10 +25,11 @@ class PromotionRules(BaseModel):
 
 
 class CloudConfig(BaseModel):
-    """Optional Azure cloud settings. Ignored when absent."""
+    """Optional AWS cloud settings. Ignored when absent."""
 
-    storage_account: str | None = None
-    keyvault_url: str | None = None
+    s3_bucket: str | None = None
+    aws_region: str | None = None
+    secret_name: str | None = None
     mlflow_tracking_uri: str | None = None
 
 

@@ -7,7 +7,11 @@ on:
     branches: [main]
 
 permissions:
+  id-token: write
   contents: read
+
+env:
+  AWS_REGION: us-east-1
 
 jobs:
   quality:
@@ -42,43 +46,65 @@ jobs:
         run: pytest tests -v
 
   build-and-push:
-    name: Build & Push Image
+    name: Build & Push to ECR
     needs: quality
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v2
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ vars.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build \
-            -t ${{ vars.ACR_LOGIN_SERVER }}/lmq:${{ github.sha }} \
-            -t ${{ vars.ACR_LOGIN_SERVER }}/lmq:latest .
-          docker push ${{ vars.ACR_LOGIN_SERVER }}/lmq --all-tags
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY --all-tags
 
   deploy:
-    name: Deploy to Container Apps
+    name: Deploy to App Runner
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: azure/login@v2
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy new revision
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Deploy new image to App Runner
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          az containerapp update \
-            --name lmq-api \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --image ${{ vars.ACR_LOGIN_SERVER }}/lmq:${{ github.sha }}
+          aws apprunner update-service \
+            --service-arn ${{ vars.APPRUNNER_SERVICE_ARN }} \
+            --source-configuration "{
+              \"ImageRepository\": {
+                \"ImageIdentifier\": \"$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG\",
+                \"ImageRepositoryType\": \"ECR\",
+                \"ImageConfiguration\": { \"Port\": \"8000\" }
+              },
+              \"AuthenticationConfiguration\": {
+                \"AccessRoleArn\": \"${{ vars.APPRUNNER_ACCESS_ROLE_ARN }}\"
+              }
+            }"

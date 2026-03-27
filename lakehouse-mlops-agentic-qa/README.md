@@ -2,7 +2,7 @@
 
 An end-to-end MLOps platform for a RAG-based QA system, built on a medallion lakehouse architecture. The project demonstrates production data engineering and ML deployment practices — from raw document ingestion through quality gates, retrieval-augmented generation, regression testing, drift monitoring, and automated promotion decisions.
 
-Runs locally with zero cloud dependencies for fast iteration, and deploys to Azure as a lakehouse MLOps platform (ADLS Gen2, Databricks, Azure ML, Container Apps) via Bicep IaC and GitHub Actions CI/CD.
+Runs locally with zero cloud dependencies for fast iteration, and deploys to AWS as a lakehouse MLOps platform (S3, Glue, SageMaker MLflow, App Runner) via CloudFormation IaC and GitHub Actions CI/CD.
 
 ## Why this project matters
 
@@ -61,9 +61,9 @@ flowchart LR
 
 ```
 
-## Azure architecture
+## AWS architecture
 
-The local-first design maps directly to Azure services for production deployment:
+The local-first design maps directly to AWS services for production deployment:
 
 ```mermaid
 flowchart TB
@@ -71,44 +71,44 @@ flowchart TB
     Repo[Repository] --> Actions[GitHub Actions<br/>lint · test · build · deploy]
   end
 
-  subgraph azure [Azure Resource Group]
+  subgraph aws [AWS Account]
     subgraph data [Data Layer]
-      ADLS[ADLS Gen2<br/>raw / lake / artifacts]
+      S3[Amazon S3<br/>raw / lake / artifacts]
     end
 
     subgraph compute [Compute]
-      Databricks[Azure Databricks<br/>Pipeline Jobs]
-      ContainerApp[Container Apps<br/>FastAPI Serving]
+      Glue[AWS Glue Python Shell<br/>Pipeline Jobs]
+      AppRunner[AWS App Runner<br/>FastAPI Serving]
     end
 
     subgraph mlops [MLOps]
-      AzureML[Azure ML Workspace<br/>MLflow Tracking]
+      SageMaker[SageMaker MLflow<br/>Experiment Tracking]
     end
 
     subgraph security [Security]
-      KeyVault[Azure Key Vault]
-      ACR[Container Registry]
+      SecretsManager[AWS Secrets Manager]
+      ECR[Amazon ECR]
     end
   end
 
-  Actions -->|push image| ACR
-  Actions -->|deploy revision| ContainerApp
-  ACR --> ContainerApp
-  Databricks -->|read/write| ADLS
-  ContainerApp -->|fetch secrets| KeyVault
-  Databricks -->|log metrics| AzureML
+  Actions -->|push image| ECR
+  Actions -->|deploy service| AppRunner
+  ECR --> AppRunner
+  Glue -->|read/write| S3
+  AppRunner -->|fetch secrets| SecretsManager
+  Glue -->|log metrics| SageMaker
 ```
 
-| Local component | Azure service | Notes |
-|----------------|---------------|-------|
-| `data/raw/`, `data/lake/` | ADLS Gen2 | Medallion layout preserved as containers |
-| `artifacts/` | ADLS Gen2 + Azure ML | Artifacts in storage, metrics in MLflow |
-| Pipeline CLI (`lmq pipeline run`) | Azure Databricks job | Same Python package, Databricks compute |
-| FastAPI server | Azure Container Apps | Containerized, scale-to-zero |
-| `OPENAI_API_KEY` env var | Azure Key Vault | Secrets fetched at startup, env var fallback |
-| JSON artifacts | Azure ML (MLflow) | Pipeline runs, regression, promotion tracked |
+| Local component | AWS service | Notes |
+|----------------|-------------|-------|
+| `data/raw/`, `data/lake/` | Amazon S3 | Prefix-based medallion layout in a single bucket |
+| `artifacts/` | S3 + SageMaker MLflow | Artifacts in S3, metrics via managed MLflow |
+| Pipeline CLI (`lmq pipeline run`) | AWS Glue Python Shell job | Same Python package, serverless compute |
+| FastAPI server | AWS App Runner | Containerized, auto-scaling, direct ECR integration |
+| `OPENAI_API_KEY` env var | AWS Secrets Manager | Secrets fetched at startup, env var fallback |
+| JSON artifacts | SageMaker MLflow (optional) | Pipeline runs, regression, promotion tracked |
 | — | GitHub Actions | Lint → test → build → push → deploy |
-| — | Bicep IaC (`infra/`) | All Azure resources declared as code |
+| — | CloudFormation IaC (`infra/`) | All AWS resources declared as code |
 
 ## Folder structure
 
@@ -118,7 +118,7 @@ lakehouse-mlops-agentic-qa/
 │   └── ci.yml                    # GitHub Actions: lint, test, build, deploy
 ├── configs/
 │   ├── pipeline.yaml             # local paths, thresholds, and promotion rules
-│   └── pipeline.azure.yaml       # Azure paths (Databricks / ADLS Gen2)
+│   └── pipeline.aws.yaml         # AWS paths (S3 bucket prefixes)
 ├── data/
 │   ├── raw/                      # source documents (.md, .txt)
 │   ├── raw_fail/                 # intentionally bad input for gate demos
@@ -127,14 +127,13 @@ lakehouse-mlops-agentic-qa/
 │       ├── silver/
 │       └── gold/
 ├── infra/
-│   ├── main.bicep                # Azure resources (ADLS, Key Vault, ACR, etc.)
-│   └── parameters.json           # deployment parameters
+│   └── cloudformation.yaml       # AWS resources (S3, Secrets Manager, ECR, App Runner)
 ├── notebooks/
-│   └── databricks_pipeline.py    # Databricks job wrapper
+│   └── glue_pipeline.py          # AWS Glue Python Shell job wrapper
 ├── src/lmq/
-│   ├── cloud/                    # Azure integrations (all optional)
-│   │   ├── storage.py            # ADLS Gen2 storage_options helper
-│   │   ├── keyvault.py           # Key Vault secret loader
+│   ├── cloud/                    # AWS integrations (all optional)
+│   │   ├── s3_storage.py         # S3 storage_options helper
+│   │   ├── secrets_manager.py    # Secrets Manager secret loader
 │   │   └── mlflow_log.py         # MLflow experiment tracking
 │   ├── pipeline/                 # bronze, silver, gold, DuckDB smoke, manifest
 │   ├── quality/                  # per-layer gate checks and models
@@ -160,7 +159,7 @@ lakehouse-mlops-agentic-qa/
 │   ├── regression/               # *_regression.json
 │   ├── evidently/                # HTML report + JSON summary
 │   └── promotion/                # *_promotion.json
-├── Dockerfile                    # multi-stage build for Container Apps
+├── Dockerfile                    # multi-stage build for App Runner
 ├── pyproject.toml
 └── README.md
 ```
@@ -346,37 +345,55 @@ pytest tests -v
 
 21 tests covering quality gates, scoring metrics, regression runner, FastAPI endpoints, Evidently report generation, and all promotion engine decision paths.
 
-## Deploy to Azure
+## Deploy to AWS
 
-**Prerequisites:** Azure CLI, a subscription, a GitHub repository.
+> **Quick start:** See [`DEPLOY_AWS.md`](DEPLOY_AWS.md) for a step-by-step walkthrough that takes the locally-built Docker image to a live App Runner URL in ~15 minutes.
 
-### 1. Provision infrastructure
+The quick-deploy path (manual ECR + App Runner) requires only the AWS CLI — no CloudFormation, no GitHub Actions. For the full automated setup, continue below.
+
+### Full infrastructure (CloudFormation)
+
+Provisions S3, Secrets Manager, ECR, IAM roles, and App Runner in a single stack:
 
 ```bash
-az group create --name lmq-rg --location eastus
-
-az deployment group create \
-  --resource-group lmq-rg \
-  --template-file infra/main.bicep \
-  --parameters infra/parameters.json
+aws cloudformation deploy \
+  --stack-name lmq \
+  --template-file infra/cloudformation.yaml \
+  --capabilities CAPABILITY_NAMED_IAM
 ```
 
-### 2. Configure GitHub secrets and variables
+Retrieve the outputs after the stack completes:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name lmq \
+  --query 'Stacks[0].Outputs'
+```
+
+### Store secrets
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id lmq/openai \
+  --secret-string '{"OPENAI_API_KEY": "sk-..."}'
+```
+
+### GitHub Actions CI/CD
+
+Configure these in your repository settings to enable automated deployments on push to main:
 
 | Secret / Variable | Value |
 |-------------------|-------|
-| `AZURE_CREDENTIALS` (secret) | Service principal JSON (`az ad sp create-for-rbac --sdk-auth`) |
-| `ACR_USERNAME` / `ACR_PASSWORD` (secrets) | From ACR admin credentials |
-| `ACR_LOGIN_SERVER` (variable) | e.g. `lmqacr<suffix>.azurecr.io` |
-| `AZURE_RESOURCE_GROUP` (variable) | e.g. `lmq-rg` |
+| `AWS_ROLE_ARN` (secret) | ARN of the GitHub Actions OIDC role |
+| `ECR_REPOSITORY` (variable) | e.g. `lmq` |
+| `APPRUNNER_SERVICE_ARN` (variable) | From CloudFormation output `AppRunnerServiceArn` |
+| `APPRUNNER_ACCESS_ROLE_ARN` (variable) | From CloudFormation output (IAM role for ECR access) |
 
-### 3. Push to main
+The workflow runs: lint → test → Docker build → push to ECR → deploy new App Runner revision.
 
-GitHub Actions runs the full pipeline: lint → test → Docker build → push to ACR → deploy new Container Apps revision.
+### Run the pipeline in AWS Glue (optional)
 
-### 4. Run the pipeline in Databricks
-
-Upload `notebooks/databricks_pipeline.py` to your workspace, install the `lmq` wheel as a cluster library, and configure ADLS access via Unity Catalog or mount points. Results are logged to Azure ML (MLflow) automatically.
+Upload the `lmq` wheel to S3, create a Glue Python Shell job referencing `notebooks/glue_pipeline.py`, and pass `--S3_BUCKET` and `--AWS_REGION` as job parameters. Connect a SageMaker MLflow tracking server for persistent experiment tracking.
 
 ### Docker (local)
 
@@ -395,15 +412,16 @@ docker run lmq pipeline run
 - **Small corpus.** The seed documents are three Markdown files. The architecture works the same way with thousands of documents, but the demo is designed to run in seconds.
 - **Character-based chunking.** The gold layer uses simple fixed-size character splits. A production system would use semantic or sentence-boundary chunking.
 - **No embedding drift.** Evidently reports use tabular features (chunk length, token count) rather than embedding vectors. This avoids heavyweight PCA but means the drift detection does not catch semantic shifts.
-- **ChromaDB stays local.** The vector index runs inside the container. A production deployment would replace it with Azure AI Search or a managed vector database.
-- **No real canary traffic splitting.** The promotion engine writes a JSON decision — it does not actually route traffic. Container Apps revision-based traffic splitting would be the natural next step.
+- **ChromaDB stays local.** The vector index runs inside the container. A production deployment would replace it with Amazon OpenSearch Service or Amazon Bedrock Knowledge Bases.
+- **No real canary traffic splitting.** The promotion engine writes a JSON decision — it does not actually route traffic. App Runner revision-based traffic splitting or an ALB weighted target group would be the natural next step.
 
 ## Future improvements
 
 - Sentence-boundary or semantic chunking in the gold layer
 - LLM-as-judge evaluation alongside keyword recall
 - Embedding drift via PCA-reduced vectors in Evidently
-- Azure AI Search replacing ChromaDB for managed vector indexing
+- Amazon OpenSearch Service or Bedrock Knowledge Bases replacing ChromaDB
 - Human-in-the-loop approval UI for canary decisions
 - Versioned gold snapshots for reproducible baseline comparisons
 - Multi-model comparison in the regression runner
+- SageMaker MLflow tracking server for managed experiment logging

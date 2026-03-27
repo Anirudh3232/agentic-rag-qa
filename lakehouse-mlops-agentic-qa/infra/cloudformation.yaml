@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  LMQ — minimal AWS infrastructure for the lakehouse MLOps QA platform.
+  Creates an S3 bucket (medallion layout), Secrets Manager secret,
+  ECR repository, and an App Runner service for the FastAPI container.
+
+Parameters:
+  BaseName:
+    Type: String
+    Default: lmq
+  ImageTag:
+    Type: String
+    Default: latest
+  AppRunnerCpu:
+    Type: String
+    Default: "0.25 vCPU"
+    AllowedValues: ["0.25 vCPU", "0.5 vCPU", "1 vCPU", "2 vCPU"]
+  AppRunnerMemory:
+    Type: String
+    Default: "0.5 GB"
+    AllowedValues: ["0.5 GB", "1 GB", "2 GB", "3 GB", "4 GB"]
+
+Resources:
+
+  # ── S3 Bucket (medallion layout via prefixes: raw/, lake/, artifacts/) ──
+
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BaseName}-data-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ── Secrets Manager (stores OPENAI_API_KEY and other app secrets) ──
+
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${BaseName}/openai"
+      Description: LMQ application secrets (JSON key-value pairs)
+      SecretString: '{"OPENAI_API_KEY": ""}'
+
+  # ── ECR Repository ──
+
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref BaseName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  # ── IAM Role for App Runner to pull from ECR ──
+
+  AppRunnerAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${BaseName}-apprunner-access"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  # ── IAM Role for App Runner instance (Secrets Manager + S3 access) ──
+
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${BaseName}-apprunner-instance"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SecretsAndS3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref AppSecret
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub "${DataBucket.Arn}/*"
+
+  # ── App Runner Service ──
+
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    DependsOn: AppRunnerAccessRole
+    Properties:
+      ServiceName: !Sub "${BaseName}-api"
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageIdentifier: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${BaseName}:${ImageTag}"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8000"
+            RuntimeEnvironmentVariables:
+              - Name: AWS_SECRET_NAME
+                Value: !Sub "${BaseName}/openai"
+              - Name: AWS_REGION
+                Value: !Ref AWS::Region
+              - Name: AWS_S3_BUCKET
+                Value: !Ref DataBucket
+      InstanceConfiguration:
+        Cpu: !Ref AppRunnerCpu
+        Memory: !Ref AppRunnerMemory
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /health
+        Interval: 20
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 3
+
+Outputs:
+  BucketName:
+    Description: S3 bucket for raw/lake/artifacts data
+    Value: !Ref DataBucket
+  SecretArn:
+    Description: Secrets Manager secret ARN
+    Value: !Ref AppSecret
+  EcrRepositoryUri:
+    Description: ECR repository URI
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${BaseName}"
+  AppRunnerServiceUrl:
+    Description: App Runner service URL
+    Value: !GetAtt AppRunnerService.ServiceUrl
+  AppRunnerServiceArn:
+    Description: App Runner service ARN
+    Value: !GetAtt AppRunnerService.ServiceArn
